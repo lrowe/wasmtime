@@ -1,0 +1,42 @@
+name: build
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: sha
+        required: true
+env:
+  BUILDX_NO_DEFAULT_ATTESTATIONS: 1
+  IMAGE: "ghcr.io/${{ github.repository }}"
+  IMAGE_REVISION: "${{ github.event.inputs.sha }}"
+  IMAGE_SOURCE: "${{ github.server_url }}/${{ github.repository }}"
+  RUN_SUFFIX: "-run.${{ github.run_number }}.${{ github.run_attempt }}"
+  GIT_SUFFIX: "-git.${{ github.event.inputs.sha }}"
+jobs:
+  build:
+    permissions:
+      packages: write
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Log in to registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Create buildx builder
+        run: |
+          docker buildx create --name=container --driver=docker-container --use --bootstrap
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Build and push bin
+        run: |
+          docker buildx build \
+            --builder=container \
+            --build-arg "IMAGE_SOURCE=$IMAGE_SOURCE" \
+            --build-arg "IMAGE_REVISION=$IMAGE_REVISION" \
+            --label "org.opencontainers.image.source=$IMAGE_SOURCE" \
+            --label "org.opencontainers.image.revision=$IMAGE_REVISION" \
+            --tag "$IMAGE:bin$RUN_SUFFIX" \
+            --tag "$IMAGE:bin$GIT_SUFFIX" \
+            --push \
+            --target bin .
